@@ -14,6 +14,7 @@ class QModelIndex;
 class QStringListModel;
 class LoginDialog;
 class QModelIndex;
+class CommentDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -26,6 +27,7 @@ public:
 private:
     Ui::MainWindow *ui;
     LoginDialog    *m_login;
+    CommentDialog  *m_commentDialog;
     uint            m_courierID;
     QSqlQueryModel *m_inputModel;
     QItemSelectionModel *m_inputSelectionModel;
@@ -56,6 +58,8 @@ private slots:
      * @brief Disconnect current courier (clear all tables, etc, etc)
      */
     void disconnectCourier();
+    void editComment();
 signals:
-    void connected();
+    void updateInputView();
+    void updateSelView();
 };

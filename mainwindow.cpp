@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "logindialog.h"
+#include "commentdialog.h"
 #include <QSqlDatabase>
 #include <QSqlQueryModel>
 #include <QItemSelectionModel>
@@ -30,7 +31,8 @@ struct DBOpener
     ~DBOpener()
     {
         qDebug() << "~DBOpen: ";
-        QSqlDatabase::database().close();
+        if (!QSqlDatabase::database().isOpen())
+            QSqlDatabase::database().close();
 
     }
 };
@@ -40,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
   : QMainWindow(parent)
   , ui(new Ui::MainWindow)
   , m_login(new LoginDialog(this))
+  , m_commentDialog( new CommentDialog( this ))
   , m_courierID( 0 )
   , m_inputModel( new QSqlQueryModel( this ) )
   , m_inputSelectionModel( new QItemSelectionModel( m_inputModel, this ) )
@@ -56,19 +59,81 @@ MainWindow::MainWindow(QWidget *parent)
     ui->selectedView->setSelectionModel( m_selectedSelectionModel);
 
     QTimer::singleShot(10, this, SLOT(processLogin()));
-    connect(this, SIGNAL(connected()), this, SLOT(redrawView()));
+    connect(this, SIGNAL(updateInputView()), this, SLOT(redrawView()));
+    connect( this, SIGNAL(updateSelView()), this, SLOT(redrawSelected()) );
     connect( ui->actionRelogin, SIGNAL(triggered()), this, SLOT(processLogin()));
     connect( ui->actionDisconnect, SIGNAL(triggered()), this, SLOT(disconnectCourier()));
 
     connect( ui->actionSelect, SIGNAL(triggered()), this, SLOT(selectBook()));
     connect( ui->actionDeselect, SIGNAL(triggered()), this, SLOT(deselectBook()));
     connect( ui->actionMark_as_Delivered, SIGNAL(triggered()), this, SLOT(markBook()));
+    connect( ui->actionChange_comment, SIGNAL(triggered()), this, SLOT(editComment()));
     connect( ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(currentTabChanged(int)));
 
     connect( m_inputSelectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
              this, SLOT(inputSelectionChanged(QModelIndex,QModelIndex)));
     connect( m_selectedSelectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
              this, SLOT(selSelectionChanged(QModelIndex,QModelIndex)));
+}
+
+void MainWindow::editComment()
+{
+    const int row = m_selectedSelectionModel->currentIndex().row();
+    if (-1 == row) {
+        return;
+    }
+
+    const QString oldComment = ui->commentLabel->text();
+    m_commentDialog->prepare( oldComment );
+
+    if (QDialog::Accepted == m_commentDialog->exec()) {
+        const QString& newComment = m_commentDialog->getComment();
+
+        DBOpener db( this );
+        qDebug() << (m_selectedModel->record( row ).value( 0 ).toString() == "Deliver");
+
+        const QSqlRecord& record = m_selectedModel->record( row );
+
+        QSqlQuery query;
+        if ( "Deliver" == record.value( 0 ) ) {
+            qDebug() << "Prepare: " <<
+                    query.prepare( "UPDATE book_to_deliver "
+                                   "SET commnt = :newComment "
+                                   "WHERE purchasing_date = :date "
+                                     "AND isbn = :isbn "
+                                     "AND customer_id = :id"
+                                   );
+        }
+        else {
+            qDebug() << "Prepare: " <<
+                    query.prepare( "UPDATE book_to_receive "
+                                   "SET commnt = :newComment "
+                                   "WHERE purchasing_date = :date "
+                                     "AND isbn = :isbn "
+                                     "AND customer_id = :id"
+                                   );
+        }
+
+        query.bindValue( ":newComment", newComment );
+        query.bindValue( ":date", record.value( 1 ));
+        query.bindValue( ":id", record.value( 2 ));
+        query.bindValue( ":isbn", record.value( 3 ));
+
+        qDebug() << "Transaction: " <<
+                    QSqlDatabase::database().transaction();
+
+        qDebug() << "Exec: " << query.exec();
+        const bool commit = QSqlDatabase::database().commit();
+        qDebug() << "Commit: " << commit;
+        if (!commit) {
+            qDebug() << "Rollback: " <<
+                        QSqlDatabase::database().rollback();
+        }
+        else {
+            ui->commentLabel->setText( newComment );
+            emit updateSelView();
+        }
+    }
 }
 
 void MainWindow::selSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -115,8 +180,7 @@ void MainWindow::currentTabChanged(const int tab)
         ui->actionSelect->setEnabled( true );
 
         // TODO: start another timer?
-        redrawView();
-        ui->tableView->selectRow( -1 );
+        emit updateInputView();
         break;
     case 1:
         ui->actionChange_comment->setEnabled( true );
@@ -125,8 +189,7 @@ void MainWindow::currentTabChanged(const int tab)
         ui->actionSelect->setEnabled( false );
 
         //TODO: start another timer?
-        redrawSelected();
-        ui->selectedView->selectRow( -1 );
+        emit updateSelView();
         break;
     }
 
@@ -164,9 +227,7 @@ void MainWindow::redrawView()
                                                ", b.purchasing_date"
                                                ", b.isbn"
                                                ", b.customer_id"
-                                               ", b.address_to address "
-                                     // TODO: uncomment
-                                               //", b.address "
+                                               ", b.address "
                                           "FROM book_to_deliver b "
                                                "LEFT JOIN delivery d ON "
                                                     "b.purchasing_date = d.purchasing_date "
@@ -236,9 +297,7 @@ void MainWindow::redrawSelected()
                                        ", b.purchasing_date"
                                        ", b.isbn"
                                        ", b.customer_id"
-                                       ", b.address_to address "
-                             // TODO: uncomment
-                                       //", b.address "
+                                       ", b.address "
                                        ", b.commnt "
                                   "FROM book_to_deliver b "
                                        "JOIN delivery d ON "
@@ -309,10 +368,10 @@ void MainWindow::selectBook()
     if (!commit) {
         qDebug() << "Rollback: " << QSqlDatabase::database().rollback();
     }
-
-    redrawView();
-    //redrawSelected();
-    ui->actionSelect->setEnabled( false );
+    else {
+        ui->actionSelect->setEnabled( false );
+        emit updateInputView();
+    }
 }
 
 void MainWindow::deselectBook()
@@ -350,8 +409,9 @@ void MainWindow::deselectBook()
     if (!commit) {
         qDebug() << "Rollback: " << QSqlDatabase::database().rollback();
     }
-
-    redrawSelected();
+    else {
+        emit updateSelView();
+    }
 }
 
 void MainWindow::markBook()
@@ -375,7 +435,7 @@ void MainWindow::markBook()
 
     QSqlQuery query;
     qDebug() << "Prepare: " <<
-                query.prepare( "CALL courier_book_mark( :isbn, :date, :cust, :cour)" );
+                query.prepare( "CALL courier_mark_book( :isbn, :date, :cust, :cour)" );
 
     query.bindValue( ":isbn", isbn);
     query.bindValue( ":date", purchasingDate);
@@ -389,8 +449,9 @@ void MainWindow::markBook()
     if (!commit) {
         qDebug() << "Rollback: " << QSqlDatabase::database().rollback();
     }
-
-    redrawSelected();
+    else {
+        emit updateSelView();
+    }
 }
 
 MainWindow::~MainWindow()
@@ -431,7 +492,6 @@ void MainWindow::processLogin()
         {
             m_courierID = m_login->userName().toUInt();
             connectCourier();
-            emit connected();
         }
         else
         {
@@ -458,8 +518,7 @@ void MainWindow::setupConnection() const
     const QString dbName( settings.value( "database", "bookstore" ).toString() );
     const QString userName( settings.value( "user",     QString()   ).toString() );
     const QString password( settings.value( "password", QString()   ).toString() );
-    //TODO:
-  // const int port( settings.value( "port", "1521").toInt());
+    const int port( settings.value( "port", "1521").toInt());
     settings.endGroup();
 
     qDebug() << "driver: " << dbDriver;
@@ -467,14 +526,14 @@ void MainWindow::setupConnection() const
     qDebug() << "database: " << dbName;
     qDebug() << "username: " << userName;
     qDebug() << "password: " << password;
-  //  qDebug() << "port: " << port;
+    qDebug() << "port: " << port;
 
     QSqlDatabase db = QSqlDatabase::addDatabase( dbDriver );
     db.setHostName(     hostName );
     db.setDatabaseName( dbName );
     db.setUserName(     userName );
     db.setPassword(     password );
- //   db.setPort( port );
+    db.setPort( port );
 }
 
 void MainWindow::disconnectCourier()
@@ -502,4 +561,6 @@ void MainWindow::connectCourier()
     ui->menuAction->setEnabled( true );
 
     ui->actionDisconnect->setEnabled( true );
+
+    emit updateInputView();
 }
