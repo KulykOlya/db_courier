@@ -46,7 +46,7 @@ private:
     void connectCourier();
 private slots:
     void processLogin();
-    void redrawView();
+    void redrawForSelect();
     void redrawSelected();
     void selectBook();
     void deselectBook();

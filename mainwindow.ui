@@ -18,11 +18,11 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="tab">
        <attribute name="title">
-        <string>Books for delivery/receiving</string>
+        <string>Книги на доставку/повернення</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
@@ -40,7 +40,7 @@
           <item>
            <widget class="QPushButton" name="pushButton">
             <property name="text">
-             <string>Select</string>
+             <string>Вибрати</string>
             </property>
            </widget>
           </item>
@@ -63,7 +63,7 @@
       </widget>
       <widget class="QWidget" name="tab_2">
        <attribute name="title">
-        <string>Selected books</string>
+        <string>Вибрані кнги</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
@@ -94,14 +94,14 @@
           <item>
            <widget class="QPushButton" name="pushButton_2">
             <property name="text">
-             <string>Deselect</string>
+             <string>Відмінити вибір</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="pushButton_3">
             <property name="text">
-             <string>Mark delivered</string>
+             <string>Доставлено</string>
             </property>
            </widget>
           </item>
@@ -121,7 +121,7 @@
           <item>
            <widget class="QPushButton" name="pushButton_4">
             <property name="text">
-             <string>Change Comment</string>
+             <string>Змінити коментар</string>
             </property>
            </widget>
           </item>
@@ -139,12 +139,12 @@
      <x>0</x>
      <y>0</y>
      <width>664</width>
-     <height>25</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuConection">
     <property name="title">
-     <string>Connection</string>
+     <string>Підключення</string>
     </property>
     <addaction name="actionRelogin"/>
     <addaction name="actionDisconnect"/>
@@ -152,7 +152,7 @@
    </widget>
    <widget class="QMenu" name="menuAction">
     <property name="title">
-     <string>Action</string>
+     <string>Дії</string>
     </property>
     <addaction name="actionSelect"/>
     <addaction name="actionDeselect"/>
@@ -165,7 +165,7 @@
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionRelogin">
    <property name="text">
-    <string>Reconnect</string>
+    <string>Перепідключення</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
@@ -173,7 +173,7 @@
   </action>
   <action name="actionDisconnect">
    <property name="text">
-    <string>Disconnect</string>
+    <string>Вихід з системи</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+W</string>
@@ -181,7 +181,7 @@
   </action>
   <action name="actionQuit">
    <property name="text">
-    <string>Quit</string>
+    <string>Закриття програми</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Q</string>
@@ -189,22 +189,22 @@
   </action>
   <action name="actionSelect">
    <property name="text">
-    <string>Select</string>
+    <string>Вибрати</string>
    </property>
   </action>
   <action name="actionDeselect">
    <property name="text">
-    <string>Deselect</string>
+    <string>Відмінити вибір</string>
    </property>
   </action>
   <action name="actionMark_as_Delivered">
    <property name="text">
-    <string>Mark as Delivered</string>
+    <string>Позначити доставленим</string>
    </property>
   </action>
   <action name="actionChange_comment">
    <property name="text">
-    <string>Change comment</string>
+    <string>Змінити коментар</string>
    </property>
   </action>
  </widget>

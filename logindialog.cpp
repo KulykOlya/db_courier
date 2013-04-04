@@ -26,6 +26,7 @@ void LoginDialog::clear()
 
 void LoginDialog::store_credentials()
 {
-    m_passwordHash = QCryptographicHash::hash((ui->passwordEdit->text().toStdString().c_str()), QCryptographicHash::Md5).toHex();
+    m_passwordHash = ui->passwordEdit->text();
+//    m_passwordHash = QCryptographicHash::hash((ui->passwordEdit->text().toStdString().c_str()), QCryptographicHash::Md5).toHex();
     m_userName = ui->userEdit->text();
 }

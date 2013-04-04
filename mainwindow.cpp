@@ -16,9 +16,6 @@
 
 namespace
 {
-/**
- * @brief The DBOpener struct RAII helper that tries to (re)open connection database and closes it afterwards.
- */
 struct DBOpener
 {
     DBOpener( MainWindow * const iMW)
@@ -59,7 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->selectedView->setSelectionModel( m_selectedSelectionModel);
 
     QTimer::singleShot(10, this, SLOT(processLogin()));
-    connect(this, SIGNAL(updateInputView()), this, SLOT(redrawView()));
+    connect( this, SIGNAL(updateInputView()), this, SLOT(redrawForSelect()));
     connect( this, SIGNAL(updateSelView()), this, SLOT(redrawSelected()) );
     connect( ui->actionRelogin, SIGNAL(triggered()), this, SLOT(processLogin()));
     connect( ui->actionDisconnect, SIGNAL(triggered()), this, SLOT(disconnectCourier()));
@@ -90,7 +87,6 @@ void MainWindow::editComment()
         const QString& newComment = m_commentDialog->getComment();
 
         DBOpener db( this );
-        qDebug() << (m_selectedModel->record( row ).value( 0 ).toString() == "Deliver");
 
         const QSqlRecord& record = m_selectedModel->record( row );
 
@@ -98,25 +94,25 @@ void MainWindow::editComment()
         if ( "Deliver" == record.value( 0 ) ) {
             qDebug() << "Prepare: " <<
                     query.prepare( "UPDATE book_to_deliver "
-                                   "SET commnt = :newComment "
-                                   "WHERE purchasing_date = :date "
+                                   "SET commnt = :newc "
+                                   "WHERE purchasing_date = to_timestamp(:dt, 'J SSSSS') "
                                      "AND isbn = :isbn "
-                                     "AND customer_id = :id"
+                                     "AND customer_id = :cust"
                                    );
         }
         else {
             qDebug() << "Prepare: " <<
                     query.prepare( "UPDATE book_to_receive "
-                                   "SET commnt = :newComment "
-                                   "WHERE purchasing_date = :date "
+                                   "SET commnt = :newc "
+                                   "WHERE purchasing_date = to_timestamp(:dt, 'J SSSSS') "
                                      "AND isbn = :isbn "
-                                     "AND customer_id = :id"
+                                     "AND customer_id = :cust"
                                    );
         }
 
-        query.bindValue( ":newComment", newComment );
-        query.bindValue( ":date", record.value( 1 ));
-        query.bindValue( ":id", record.value( 2 ));
+        query.bindValue( ":newc", newComment );
+        query.bindValue( ":dt", record.value( 1 ));
+        query.bindValue( ":cust", record.value( 2 ));
         query.bindValue( ":isbn", record.value( 3 ));
 
         qDebug() << "Transaction: " <<
@@ -145,6 +141,8 @@ void MainWindow::selSelectionChanged(const QModelIndex &current, const QModelInd
     }
 
     ui->actionChange_comment->setEnabled( -1 != curr );
+    ui->actionDeselect->setEnabled( -1 != curr );
+    ui->actionMark_as_Delivered->setEnabled( -1 != curr);
     ui->pushButton_2->setEnabled( -1 != curr );
     ui->pushButton_3->setEnabled( -1 != curr );
     ui->pushButton_4->setEnabled( -1 != curr );
@@ -171,44 +169,40 @@ void MainWindow::inputSelectionChanged(const QModelIndex &current, const QModelI
 
 void MainWindow::currentTabChanged(const int tab)
 {
-    qDebug() << tab;
+    ui->actionChange_comment->setEnabled( false );
+    ui->actionDeselect->setEnabled( false );
+    ui->actionMark_as_Delivered->setEnabled( false );
+    ui->actionSelect->setEnabled( false );
+    ui->pushButton->setEnabled( false );
+    ui->pushButton_2->setEnabled( false );
+    ui->pushButton_3->setEnabled( false );
+    ui->pushButton_4->setEnabled( false );
     switch (tab) {
     case 0: // input tab
-        ui->actionChange_comment->setEnabled( false );
-        ui->actionDeselect->setEnabled( false );
-        ui->actionMark_as_Delivered->setEnabled( false );
-        ui->actionSelect->setEnabled( true );
-
         // TODO: start another timer?
         emit updateInputView();
         break;
     case 1:
-        ui->actionChange_comment->setEnabled( true );
-        ui->actionDeselect->setEnabled( true );
-        ui->actionMark_as_Delivered->setEnabled( true );
-        ui->actionSelect->setEnabled( false );
-
         //TODO: start another timer?
         emit updateSelView();
         break;
     }
-
 }
 
-void MainWindow::redrawView()
+void MainWindow::redrawForSelect()
 {
     DBOpener db( this );
 
     QSqlQuery query;
     qDebug() << "PREPARE: " <<
                 query.prepare( "SELECT h.dr"
-                                          ", h.purchasing_date"
-                                          ", h.customer_id"
-                                          ", h.isbn"
-                                          ", h.address"
-                                          ", book.title"
-                                          ", c.name "
-                                          ", c.phone "
+                                    ", to_char(h.purchasing_date, 'J SSSSS')"
+                                    ", h.customer_id"
+                                    ", h.isbn"
+                                    ", h.address"
+                                    ", book.title"
+                                    ", c.name "
+                                    ", c.phone "
                                      "FROM "
                                         "("
                                           "SELECT 'Receive' dr"
@@ -233,15 +227,14 @@ void MainWindow::redrawView()
                                                     "b.purchasing_date = d.purchasing_date "
                                                 "AND b.isbn = d.isbn "
                                                 "AND b.customer_id = d.customer_id "
-                                          "WHERE courier_id ISNULL"
+                                          "WHERE courier_id IS NULL"
                                         ") h "
                                           "JOIN book ON "
                                                "book.isbn = h.isbn "
                                           "JOIN customer c ON "
                                                "c.customer_id = h.customer_id"
-
                                      );
-    qDebug() << query.exec();
+    qDebug() << "Exec: " << query.exec();
     m_inputModel->setQuery( query);
     m_inputModel->setHeaderData( 0, Qt::Horizontal, tr("Receive/Deliver"));
     m_inputModel->setHeaderData( 1, Qt::Horizontal, tr("Date of purchase"));
@@ -255,6 +248,7 @@ void MainWindow::redrawView()
     ui->tableView->hideColumn( 2 ); // customer id
     ui->tableView->hideColumn( 7 ); // phonev
     ui->tableView->resizeColumnsToContents();
+    qDebug() << m_inputModel->rowCount();
 }
 
 void MainWindow::redrawSelected()
@@ -268,14 +262,14 @@ void MainWindow::redrawSelected()
 
     QSqlQuery query;
     qDebug() << "Prepare: " <<
-                query.prepare(
+                query.prepare(QString(
                              "SELECT h.dr"
-                                  ", h.purchasing_date"
+                                  ", to_char( h.purchasing_date, 'J SSSSS')"
                                   ", h.customer_id"
                                   ", h.isbn"
                                   ", h.address"
                                   ", book.title"
-                                  ", c.name "
+                                  ", c.name"
                                   ", c.phone "
                                   ", h.commnt "
                              "FROM "
@@ -284,39 +278,37 @@ void MainWindow::redrawSelected()
                                        ", b.purchasing_date"
                                        ", b.isbn"
                                        ", b.customer_id"
-                                       ", b.address "
+                                       ", b.address"
                                        ", b.commnt "
                                   "FROM book_to_receive b "
                                        "JOIN receiving d ON "
                                              "b.purchasing_date = d.purchasing_date "
                                          "AND b.isbn = d.isbn "
                                          "AND b.customer_id = d.customer_id "
-                                  "WHERE courier_id = :courierID1 "
+                                  "WHERE d.courier_id = %0 "
                                 "UNION "
                                   "SELECT 'Deliver' dr"
                                        ", b.purchasing_date"
                                        ", b.isbn"
                                        ", b.customer_id"
-                                       ", b.address "
+                                       ", b.address"
                                        ", b.commnt "
                                   "FROM book_to_deliver b "
                                        "JOIN delivery d ON "
                                             "b.purchasing_date = d.purchasing_date "
                                         "AND b.isbn = d.isbn "
                                         "AND b.customer_id = d.customer_id "
-                                  "WHERE courier_id = :courierID2 "
+                                  "WHERE d.courier_id = %1 "
                                 ") h "
                                   "JOIN book ON "
                                        "book.isbn = h.isbn "
                                   "JOIN customer c ON "
                                        "c.customer_id = h.customer_id"
-                    ); // end of query
-
-    query.bindValue( ":courierID1", m_courierID );
-    query.bindValue( ":courierID2", m_courierID );
+                                  ).arg(m_courierID).arg(m_courierID));
 
     qDebug() << "Exec: " << query.exec();
     m_selectedModel->setQuery( query );
+    qDebug() << m_selectedModel->rowCount();
     m_selectedModel->setHeaderData( 0, Qt::Horizontal, tr("Receive/Deliver"));
     m_selectedModel->setHeaderData( 1, Qt::Horizontal, tr("Date of purchase"));
     m_selectedModel->setHeaderData( 2, Qt::Horizontal, tr("CustomerID"));
@@ -328,8 +320,7 @@ void MainWindow::redrawSelected()
     m_selectedModel->setHeaderData( 8, Qt::Horizontal, tr("Comment"));
     ui->selectedView->hideColumn( 1 ); // date of purchase
     ui->selectedView->hideColumn( 2 ); // customer id
-    ui->selectedView->hideColumn( 7 ); // phonev
-    ui->selectedView->hideColumn( 8 );
+    ui->selectedView->hideColumn( 8 ); // comment
     ui->selectedView->resizeColumnsToContents();
 }
 
@@ -354,10 +345,10 @@ void MainWindow::selectBook()
 
     QSqlQuery query;
     qDebug() << "Prepare: " <<
-                query.prepare( "CALL courier_book_select( :isbn, :date, :cust, :cour)" );
+                query.prepare( "CALL courier_book_select( :isbn, to_timestamp(:dt, 'J SSSSS'), :cust, :cour)" );
 
     query.bindValue( ":isbn", isbn);
-    query.bindValue( ":date", purchasingDate);
+    query.bindValue( ":dt", purchasingDate);
     query.bindValue( ":cust", customerID);
     query.bindValue( ":cour", m_courierID);
 
@@ -370,6 +361,7 @@ void MainWindow::selectBook()
     }
     else {
         ui->actionSelect->setEnabled( false );
+        ui->pushButton->setEnabled( false );
         emit updateInputView();
     }
 }
@@ -395,10 +387,10 @@ void MainWindow::deselectBook()
 
     QSqlQuery query;
     qDebug() << "Prepare: " <<
-                query.prepare( "CALL courier_book_deselect( :isbn, :date, :cust, :cour)" );
+                query.prepare( "CALL courier_book_deselect( :isbn, to_timestamp(:dt, 'J SSSSS'), :cust, :cour)" );
 
     query.bindValue( ":isbn", isbn);
-    query.bindValue( ":date", purchasingDate);
+    query.bindValue( ":dt", purchasingDate);
     query.bindValue( ":cust", customerID);
     query.bindValue( ":cour", m_courierID);
 
@@ -435,10 +427,10 @@ void MainWindow::markBook()
 
     QSqlQuery query;
     qDebug() << "Prepare: " <<
-                query.prepare( "CALL courier_mark_book( :isbn, :date, :cust, :cour)" );
+                query.prepare( "CALL courier_mark_book( :isbn, to_timestamp(:dt, 'J SSSSS'), :cust, :cour)" );
 
     query.bindValue( ":isbn", isbn);
-    query.bindValue( ":date", purchasingDate);
+    query.bindValue( ":dt", purchasingDate);
     query.bindValue( ":cust", customerID);
     query.bindValue( ":cour", m_courierID);
 
@@ -468,25 +460,21 @@ void MainWindow::processLogin()
     {
         DBOpener olya( this );
 
-        qDebug() << "Trying to login with ID: " << m_login->userName() << "; and passwordHash = " <<
-                    m_login->passwordHash();
-
         QSqlQuery searchPasswordHash;
-        searchPasswordHash.setForwardOnly( true );
         qDebug() << "Prepare: " <<
                     searchPasswordHash.prepare( "SELECT COUNT(*) "
                                                 "FROM courier "
                                                 "WHERE courier_id = :courierID "
-                                                "AND password_hash = :passwordHash ");
+                                                "AND password_hash = :passwordHash "
+                                                );
         searchPasswordHash.bindValue( ":courierID", m_login->userName() );
         searchPasswordHash.bindValue( ":passwordHash", m_login->passwordHash() );
 
         qDebug() << "Exec: " << searchPasswordHash.exec();
+        qDebug() << "Error: " << searchPasswordHash.lastError();
         qDebug() << "First: "<< searchPasswordHash.first();
 
         const uint found = searchPasswordHash.value( 0 ).toUInt();
-
-        searchPasswordHash.clear();
 
         if (1 == found)
         {
@@ -540,7 +528,6 @@ void MainWindow::disconnectCourier()
 {
     m_inputModel->clear();
     m_selectedModel->clear();
-    ui->tabWidget->setCurrentIndex( 0 );
     ui->tabWidget->setEnabled( false );
     ui->menuAction->setEnabled( false );
     ui->actionDisconnect->setEnabled( false );
@@ -561,6 +548,8 @@ void MainWindow::connectCourier()
     ui->menuAction->setEnabled( true );
 
     ui->actionDisconnect->setEnabled( true );
+    ui->tabWidget->setCurrentIndex( -1 );
+    ui->tabWidget->setCurrentIndex( 0 );
 
     emit updateInputView();
 }
